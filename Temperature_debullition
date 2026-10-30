@@ -1,0 +1,96 @@
+import math
+
+# ============================================================
+# PRÉDICTION GÉNÉRALE DE LA TEMPÉRATURE D'ÉBULLITION (Tb)
+# Méthode : Lydersen (Tc) + Trouton (ΔH) + Watson + Clausius-Clapeyron
+# ============================================================
+
+# ------------------------------------------------------------
+# 1. PARAMÈTRES D'ENTRÉE (À MODIFIER SELON LE COMPOSÉ)
+# ------------------------------------------------------------
+
+# Pressions (en mmHg)
+P1_mmHg = 200.0        # Pression de référence connue
+P2_mmHg = 760.0        # Pression cible (normale)
+
+# Température d'ébullition au point de référence (en Kelvin)
+T1_K = 307.95          # Exemple: 34.8 °C = 307.95 K
+
+# Groupes fonctionnels du composé et leurs contributions de Lydersen (delta_T)
+# Format : "Nom_du_groupe": contribution
+# (Vous pouvez ajouter/retirer des groupes selon la molécule étudiée)
+groupes_molecule = {
+    "-CH3": 0.020,
+    "-OH":  0.082
+    # "-CH2-": 0.020,
+    # "-C6H5": 0.062, etc. selon les tables
+}
+
+# ------------------------------------------------------------
+# 2. CALCULS PRÉLIMINAIRES
+# ------------------------------------------------------------
+
+# Somme des contributions de Lydersen
+sum_delta_T = sum(groupes_molecule.values())
+print(f"Somme des contributions (Lydersen) = {sum_delta_T:.3f}")
+
+# Étape 1 : Estimation de la température critique (Tc) par Lydersen
+# Formule : Tc = Tb / (0.567 + ΣΔT - (ΣΔT)^2)
+Tc_K = T1_K / (0.567 + sum_delta_T - sum_delta_T**2)
+print(f"Tc estimé (Lydersen) = {Tc_K:.2f} K")
+
+# Étape 2 : Enthalpie de vaporisation au point de référence (Règle de Trouton)
+# Formule : ΔH_vb ≈ 0.109 * Tb (kJ/mol) (Valable pour liquides non polaires)
+dH_vb_kJ = 0.109 * T1_K
+print(f"ΔH_vb (Trouton) = {dH_vb_kJ:.2f} kJ/mol")
+
+# ------------------------------------------------------------
+# 3. CALCUL ITÉRATIF (Watson + Clausius-Clapeyron)
+# ------------------------------------------------------------
+
+R = 8.314  # Constante des gaz parfaits (J/(mol·K))
+ln_ratio = math.log(P2_mmHg / P1_mmHg)
+
+# Estimation initiale grossière de T2 (on suppose une différence de 30K au départ)
+T2_K = T1_K + 30.0 
+convergence = False
+
+print("\n--- Début des itérations ---")
+for i in range(10):
+    # A. Correction de Watson pour l'enthalpie à T2
+    # Formule : ΔH(T2) = ΔH_vb * ((Tc - T2)/(Tc - T1))^0.38
+    # (Attention : nécessite Tc > T2)
+    dH_T2_kJ = dH_vb_kJ * ((Tc_K - T2_K) / (Tc_K - T1_K))**0.38
+    dH_T2_J = dH_T2_kJ * 1000.0
+
+    # B. Équation de Clausius-Clapeyron pour trouver T2
+    # ln(P2/P1) = (ΔH/R) * (1/T1 - 1/T2)
+    inv_T2 = (1.0 / T1_K) - (R * ln_ratio / dH_T2_J)
+    T2_new = 1.0 / inv_T2
+
+    print(f"Itération {i+1} : T2 = {T2_new:.2f} K")
+
+    # C. Vérification de la convergence
+    if abs(T2_new - T2_K) < 0.01:
+        T2_K = T2_new
+        convergence = True
+        print("-> Convergence atteinte !")
+        break
+        
+    # Mise à jour de T2 pour l'itération suivante
+    T2_K = T2_new
+
+# ------------------------------------------------------------
+# 4. AFFICHAGE DES RÉSULTATS
+# ------------------------------------------------------------
+
+print("\n--- Résultats finaux ---")
+if convergence:
+    print(f"Température d'ébullition calculée à {P2_mmHg} mmHg :")
+    print(f"T2 = {T2_K:.2f} K  (soit {T2_K - 273.15:.1f} °C)")
+else:
+    print("Attention : La boucle n'a pas convergé en 10 itérations.")
+
+# Optionnel : Affichage de l'écart si vous connaissez la valeur expérimentale
+# T_exp_K = 337.85 
+# print(f"Écart avec la valeur expérimentale : {T2_K - T_exp_K:.1f} K")
